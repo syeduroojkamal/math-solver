@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Step-by-Step KaTeX FLIP Animator</title>
+  <link
+    rel="stylesheet"
+    href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css"
+  />
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-slate-950 text-slate-100 antialiased">
+  <header class="border-b border-slate-800 bg-slate-900/80">
+    <div class="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+      <div class="flex items-center gap-4">
+        <div class="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-500/15 text-2xl font-semibold text-blue-300 ring-1 ring-inset ring-blue-400/20">
+          &Sigma;
+        </div>
+        <div>
+          <h1 class="text-lg font-semibold tracking-tight text-white">KaTeX FLIP Animator</h1>
+          <p class="mt-1 text-sm text-slate-400">Animate mathematical steps with persistent token IDs</p>
+        </div>
+      </div>
+      <span class="w-fit rounded-full border border-slate-700 bg-slate-800/70 px-3 py-1 text-xs font-medium text-slate-300">
+        FLIP · First, Last, Invert, Play
+      </span>
+    </div>
+  </header>
+
+  <main class="mx-auto grid max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-5 lg:py-10">
+    <section class="flex flex-col rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-xl shadow-black/10 lg:col-span-2">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <label for="steps-editor" class="text-sm font-semibold text-slate-100">Step pipeline</label>
+        <div class="flex items-center gap-2">
+          <span class="rounded-md bg-slate-800 px-2 py-1 text-xs font-mono text-slate-400">JSON</span>
+          <button
+            id="btn-copy-prompt"
+            type="button"
+            class="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-200 transition hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400/50"
+          >
+            Copy AI prompt
+          </button>
+          <span id="prompt-copy-status" class="sr-only" aria-live="polite"></span>
+        </div>
+      </div>
+      <p class="mt-3 text-sm leading-6 text-slate-400">
+        Enter an array of steps. Give every changing term on both sides of the
+        equation its own
+        <code class="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-blue-300">\htmlId{token_id}{...}</code>
+        tag. Untagged terms cannot be matched or highlighted between steps.
+      </p>
+      <button
+        id="btn-parse"
+        class="mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-950/30 transition hover:bg-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-offset-2 focus:ring-offset-slate-900 active:bg-blue-600"
+      >
+        Compile &amp; Load Pipeline
+      </button>
+      <textarea
+        id="steps-editor"
+        spellcheck="false"
+        placeholder='[
+  {
+    "latex": "\\htmlId{term}{x} = 2",
+    "explanation": "First step"
+  }
+]'
+        class="mt-5 min-h-72 w-full flex-1 resize-y rounded-xl border border-slate-700 bg-slate-950 p-4 font-mono text-sm leading-6 text-slate-200 placeholder:text-slate-600 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/20"
+      ></textarea>
+
+    </section>
+
+    <section class="flex flex-col gap-6 lg:col-span-3">
+      <div class="rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-xl shadow-black/10 sm:p-7">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4">
+          <span id="step-badge" class="inline-flex items-center rounded-full border border-blue-400/20 bg-blue-400/10 px-3 py-1 text-xs font-semibold text-blue-300">Step 0 of 0</span>
+          <label class="flex items-center gap-2 text-sm text-slate-400">
+            Speed
+            <select id="duration-select" class="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20">
+              <option value="400">Fast · 400 ms</option>
+              <option value="700" selected>Normal · 700 ms</option>
+              <option value="1200">Slow · 1.2 s</option>
+            </select>
+          </label>
+        </div>
+        <div id="equation-fullscreen" class="mt-5 flex flex-col gap-5 rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+          <div class="flex justify-end">
+            <button
+              id="btn-fullscreen"
+              type="button"
+              class="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400/50"
+              aria-label="Show equation and progress controls fullscreen"
+              title="Fullscreen equation and progress controls"
+            >
+              Fullscreen
+            </button>
+          </div>
+          <div class="[container-type:inline-size] flex min-h-72 w-full min-w-0 items-center justify-center overflow-x-auto px-2 py-12 text-white sm:min-h-80 sm:px-6">
+            <div id="math-viewport" class="w-full min-w-0 text-center text-[clamp(0.65rem,3.5cqi,2rem)]"></div>
+          </div>
+          <div class="flex flex-col gap-5 border-t border-slate-800 pt-5">
+            <div class="min-h-14 rounded-xl border border-slate-800 bg-slate-900 px-4 py-3">
+              <p id="step-explanation" class="text-center text-sm leading-6 text-slate-300"></p>
+            </div>
+            <div class="w-full">
+              <div class="mb-2 flex items-center justify-between text-xs font-medium text-slate-400">
+                <span>Progress</span>
+                <span id="step-ratio" class="font-mono text-slate-300">0 / 0</span>
+              </div>
+              <input
+                id="step-slider"
+                type="range"
+                min="0"
+                max="0"
+                value="0"
+                step="1"
+                aria-label="Step progress"
+                class="h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-700 accent-blue-400"
+              />
+            </div>
+            <div class="grid w-full grid-cols-2 gap-2 sm:grid-cols-4">
+              <button id="btn-prev" title="Previous step" class="min-h-10 rounded-lg border border-slate-700 bg-slate-800 px-3.5 text-sm font-medium text-slate-200 transition hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400/50 disabled:cursor-not-allowed disabled:opacity-40">
+                Previous
+              </button>
+              <button id="btn-play" class="min-h-10 rounded-lg bg-blue-500 px-4 text-sm font-semibold text-white transition hover:bg-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-offset-2 focus:ring-offset-slate-900 active:bg-blue-600">
+                <span id="play-text">Auto Play</span>
+              </button>
+              <button id="btn-next" title="Next step" class="min-h-10 rounded-lg border border-slate-700 bg-slate-800 px-3.5 text-sm font-medium text-slate-200 transition hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400/50 disabled:cursor-not-allowed disabled:opacity-40">
+                Next
+              </button>
+              <button id="btn-restart" title="Restart" class="min-h-10 rounded-lg border border-slate-700 bg-slate-800 px-3.5 text-sm font-medium text-slate-200 transition hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400/50">
+                Restart
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+        <h2 class="text-sm font-semibold text-slate-100">How the FLIP animation works</h2>
+        <ol class="mt-4 grid gap-4 text-sm leading-6 text-slate-400 sm:grid-cols-2">
+          <li class="flex gap-3">
+            <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-800 text-xs font-bold text-blue-300">01</span>
+            <span>Measure the initial positions of marked math tokens.</span>
+          </li>
+          <li class="flex gap-3">
+            <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-800 text-xs font-bold text-blue-300">02</span>
+            <span>Render the next equation and measure its final positions.</span>
+          </li>
+          <li class="flex gap-3">
+            <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-800 text-xs font-bold text-blue-300">03</span>
+            <span>Invert the position changes with a temporary transform.</span>
+          </li>
+          <li class="flex gap-3">
+            <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-800 text-xs font-bold text-blue-300">04</span>
+            <span>Play the transition to smoothly move terms into place.</span>
+          </li>
+        </ol>
+      </div>
+    </section>
+  </main>
+
+  <footer class="border-t border-slate-800 py-5 text-center text-xs text-slate-500">
+    Browser-native math morphing · KaTeX + FLIP
+  </footer>
+
+  <script>
+    const GENERATION_PROMPT = String.raw`You are a careful mathematical solver. Convert the user's equation into a correct, step-by-step sequence for a KaTeX + FLIP equation animator.
+
+Output rules:
+- Output only a raw, valid JSON array. Do not use Markdown fences or add prose.
+- Each array item must have exactly these string fields:
+  {"explain":"One concise sentence describing this step.","latex":"A KaTeX math expression"}
+- Follow this exact JSON escaping pattern:
+  [{"explain":"Keep the same term.","latex":"\\htmlId{term-x}{x} \\ge 0"}]
+- The JSON must parse with JSON.parse. In every JSON string, encode each single KaTeX backslash as exactly two backslash characters. For example, write "\\quad" for \quad and "\\begin{cases}a \\\\ b\\end{cases}" for a cases environment with a row break.
+- Never leave a KaTeX backslash unescaped, and never use three backslashes before a command. Do not add backslashes before ordinary characters.
+- Make every latex value a complete equation or expression that KaTeX can render.
+
+Mathematical rules:
+- Start with the given equation and preserve its domain restrictions.
+- Each successive item must show exactly one valid mathematical operation or simplification. Keep both sides equivalent at every step.
+- Do not combine distinct operations (for example, moving a term and simplifying the resulting arithmetic) in one step. Show intermediate expressions when needed.
+- Explain the operation actually performed, such as adding the same quantity to both sides, simplifying a sum, dividing both sides by a nonzero coefficient, or factoring.
+- Do not skip necessary algebra, assume a result, or introduce extraneous solutions. If solving, check the final solutions in the original equation and respect its domain.
+- If the equation has no solution or infinitely many solutions, show the reasoning and state the correct result in the final step.
+
+KaTeX ID and animation rules:
+- Wrap every meaningful term that changes, moves, or needs highlighting in \htmlId{id}{term}, including changing terms on both sides of the equals sign. Any untagged term cannot be matched or highlighted by the animator.
+- Tag equation operands and results individually. For example, in x^3 = (sqrt(10) + 3)^3, tag x^3 and the changing right-hand expression separately. Keep stable terms tagged too, so the animator can distinguish unchanged terms from changed terms.
+- IDs must be unique within each equation and use simple letters, digits, underscores, or hyphens.
+- Do not nest \htmlId tags. Tag the smallest independently moving or changing term, not a whole expression that contains other tagged terms.
+- Reuse the same ID for the same unchanged term when it moves or remains in the equation. This lets the animator track it without treating it as a changed term.
+- When a term's mathematical content changes, keep its ID if it is a direct one-to-one transformation; the animator will highlight that change. Give a new ID to a genuinely new result formed by combining or splitting terms.
+- Keep IDs stable across steps wherever they represent the same term. Do not reuse one ID for two different terms in the same equation.
+- Use valid KaTeX syntax inside every ID tag. Apply the JSON backslash-escaping rules above to every KaTeX command and row break.
+
+Equation to solve:
+{{USER_EQUATION}}`;
+
+    let currentSteps = [];
+    let currentIndex = 0;
+    let isPlaying = false;
+    let playInterval = null;
+
+    const viewport = document.getElementById("math-viewport");
+    const explanationEl = document.getElementById("step-explanation");
+    const badgeEl = document.getElementById("step-badge");
+    const ratioEl = document.getElementById("step-ratio");
+    const slider = document.getElementById("step-slider");
+    const durationSelect = document.getElementById("duration-select");
+    const editor = document.getElementById("steps-editor");
+    const equationFullscreen = document.getElementById("equation-fullscreen");
+    const fullscreenButton = document.getElementById("btn-fullscreen");
+    const equationDisplay = document.getElementById("math-viewport").parentElement;
+
+    const btnPrev = document.getElementById("btn-prev");
+    const btnNext = document.getElementById("btn-next");
+    const btnPlay = document.getElementById("btn-play");
+    const btnRestart = document.getElementById("btn-restart");
+    const btnParse = document.getElementById("btn-parse");
+    const btnCopyPrompt = document.getElementById("btn-copy-prompt");
+    const promptCopyStatus = document.getElementById("prompt-copy-status");
+
+    fullscreenButton.addEventListener("click", async () => {
+      try {
+        if (document.fullscreenElement === equationFullscreen) {
+          await document.exitFullscreen();
+        } else {
+          await equationFullscreen.requestFullscreen();
+        }
+      } catch (error) {
+        fullscreenButton.textContent = "Fullscreen unavailable";
+        setTimeout(() => {
+          fullscreenButton.textContent = "Fullscreen";
+        }, 2000);
+      }
+    });
+
+    document.addEventListener("fullscreenchange", () => {
+      const isFullscreen = document.fullscreenElement === equationFullscreen;
+      equationFullscreen.classList.toggle("fixed", isFullscreen);
+      equationFullscreen.classList.toggle("inset-0", isFullscreen);
+      equationFullscreen.classList.toggle("z-50", isFullscreen);
+      equationFullscreen.classList.toggle("min-h-screen", isFullscreen);
+      equationFullscreen.classList.toggle("w-screen", isFullscreen);
+      equationFullscreen.classList.toggle("justify-center", isFullscreen);
+      equationFullscreen.classList.toggle("overflow-auto", isFullscreen);
+      equationFullscreen.classList.toggle("rounded-none", isFullscreen);
+      equationFullscreen.classList.toggle("border-0", isFullscreen);
+      equationFullscreen.classList.toggle("bg-slate-950", isFullscreen);
+      equationFullscreen.classList.toggle("p-6", isFullscreen);
+      equationFullscreen.classList.toggle("sm:p-12", isFullscreen);
+      equationDisplay.classList.toggle("flex-1", isFullscreen);
+      fullscreenButton.textContent = isFullscreen ? "Exit fullscreen" : "Fullscreen";
+      fullscreenButton.setAttribute(
+        "aria-label",
+        isFullscreen
+          ? "Exit fullscreen equation and progress controls"
+          : "Show equation and progress controls fullscreen",
+      );
+    });
+
+    async function copyPromptToClipboard() {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(GENERATION_PROMPT);
+        return;
+      }
+
+      const temporaryTextarea = document.createElement("textarea");
+      temporaryTextarea.value = GENERATION_PROMPT;
+      temporaryTextarea.setAttribute("readonly", "");
+      temporaryTextarea.style.position = "fixed";
+      temporaryTextarea.style.left = "-9999px";
+      document.body.appendChild(temporaryTextarea);
+      try {
+        temporaryTextarea.select();
+        if (!document.execCommand("copy")) {
+          throw new Error("Clipboard access is unavailable in this browser.");
+        }
+      } finally {
+        temporaryTextarea.remove();
+      }
+    }
+
+    btnCopyPrompt.addEventListener("click", async () => {
+      try {
+        await copyPromptToClipboard();
+        btnCopyPrompt.textContent = "Copied!";
+        promptCopyStatus.textContent = "Solver prompt copied to clipboard.";
+      } catch (error) {
+        btnCopyPrompt.textContent = "Copy failed";
+        promptCopyStatus.textContent = `Could not copy prompt: ${error.message}`;
+      }
+
+      setTimeout(() => {
+        btnCopyPrompt.textContent = "Copy AI prompt";
+      }, 2000);
+    });
+
+    function getTrackedNodes(container) {
+      return Array.from(container.querySelectorAll("[id]")).filter(
+        (node) => !node.querySelector("[id]"),
+      );
+    }
+
+    function getNodeText(node) {
+      return node.textContent.trim().replace(/\s+/g, " ");
+    }
+
+    function capturePositions(container) {
+      const positions = new Map();
+      const nodes = getTrackedNodes(container);
+      nodes.forEach((el) => {
+        const id = el.id;
+        const rect = el.getBoundingClientRect();
+        positions.set(id, {
+          x: rect.left,
+          y: rect.top,
+          width: rect.width,
+          height: rect.height,
+          text: getNodeText(el),
+        });
+      });
+      return positions;
+    }
+
+    function renderMath(targetEl, latex) {
+      katex.render(latex, targetEl, {
+        displayMode: true,
+        throwOnError: false,
+        trust: true,
+      });
+    }
+
+    function goToStep(newIndex, animate = true) {
+      if (newIndex < 0 || newIndex >= currentSteps.length) return;
+
+      const duration = parseInt(durationSelect.value, 10);
+      const isForward = newIndex > currentIndex;
+
+      const firstPositions = animate ? capturePositions(viewport) : null;
+
+      currentIndex = newIndex;
+      const stepData = currentSteps[currentIndex];
+
+      explanationEl.style.opacity = "0";
+      setTimeout(() => {
+        explanationEl.textContent = stepData.explanation ?? stepData.explain ?? "";
+        explanationEl.style.opacity = "1";
+      }, 150);
+
+      badgeEl.textContent = `Step ${currentIndex + 1} of ${currentSteps.length}`;
+      ratioEl.textContent = `${currentIndex + 1} / ${currentSteps.length}`;
+      slider.value = currentIndex;
+      btnPrev.disabled = currentIndex === 0;
+      btnNext.disabled = currentIndex === currentSteps.length - 1;
+
+      renderMath(viewport, stepData.latex);
+
+      if (!animate || !firstPositions || firstPositions.size === 0) {
+        return;
+      }
+
+      const lastNodes = getTrackedNodes(viewport);
+      const fadeDuration = 500;
+      const highlightEnd = duration + 2000;
+      const animationDuration = highlightEnd + fadeDuration;
+      const motionEnd = duration / animationDuration;
+      const highlightEndOffset = highlightEnd / animationDuration;
+      const easing = "cubic-bezier(0.2, 0.9, 0.2, 1)";
+
+      lastNodes.forEach((node) => {
+        const id = node.id;
+        const lastRect = node.getBoundingClientRect();
+        const color = getComputedStyle(node).color;
+        const blue = "#60a5fa";
+        const firstPosition = firstPositions.get(id);
+
+        if (firstPosition) {
+          const firstRect = firstPosition;
+          const screenDeltaX = firstRect.x - lastRect.x;
+          const screenDeltaY = firstRect.y - lastRect.y;
+          const deltaX = screenDeltaX;
+          const deltaY = screenDeltaY;
+          const hasMoved =
+            Math.abs(screenDeltaX) > 0.5 || Math.abs(screenDeltaY) > 0.5;
+          const hasChanged = firstPosition.text !== getNodeText(node);
+
+          if (hasChanged) {
+            node.animate(
+              [
+                {
+                  transform: `translate(${deltaX}px, ${deltaY}px)`,
+                  color,
+                  easing,
+                },
+                {
+                  transform: "translate(0, 0)",
+                  color: blue,
+                  offset: motionEnd,
+                },
+                {
+                  transform: "translate(0, 0)",
+                  color: blue,
+                  offset: highlightEndOffset,
+                },
+                { transform: "translate(0, 0)", color, offset: 1 },
+              ],
+              {
+                duration: animationDuration,
+                easing: "linear",
+              },
+            );
+          } else if (hasMoved) {
+            node.animate(
+              [
+                {
+                  transform: `translate(${deltaX}px, ${deltaY}px)`,
+                  easing,
+                },
+                { transform: "translate(0, 0)" },
+              ],
+              {
+                duration,
+                easing: "linear",
+              },
+            );
+          }
+        } else {
+          const offsetY = isForward ? 10 : -10;
+
+          node.animate(
+            [
+              {
+                opacity: 0,
+                transform: `translateY(${offsetY}px) scale(0.85)`,
+                color: blue,
+                offset: 0,
+                easing,
+              },
+              {
+                opacity: 1,
+                transform: "translateY(0) scale(1)",
+                color: blue,
+                offset: motionEnd,
+              },
+              {
+                opacity: 1,
+                transform: "translateY(0) scale(1)",
+                color: blue,
+                offset: highlightEndOffset,
+              },
+              {
+                opacity: 1,
+                transform: "translateY(0) scale(1)",
+                color: color,
+                offset: 1,
+              },
+            ],
+            {
+              duration: animationDuration,
+              easing: "linear",
+            },
+          );
+        }
+      });
+    }
+
+    function togglePlay() {
+      if (isPlaying) {
+        stopPlay();
+      } else {
+        startPlay();
+      }
+    }
+
+    function startPlay() {
+      if (currentIndex >= currentSteps.length - 1) {
+        goToStep(0, false);
+      }
+      isPlaying = true;
+      document.getElementById("play-text").textContent = "Pause";
+      const getIntervalTime = () => parseInt(durationSelect.value, 10) + 2600;
+
+      playInterval = setInterval(() => {
+        if (currentIndex < currentSteps.length - 1) {
+          goToStep(currentIndex + 1, true);
+        } else {
+          stopPlay();
+        }
+      }, getIntervalTime());
+    }
+
+    function stopPlay() {
+      isPlaying = false;
+      clearInterval(playInterval);
+      document.getElementById("play-text").textContent = "Auto Play";
+    }
+
+    function normalizeLatexJsonEscapes(source) {
+      return source.replace(
+        /("latex"\s*:\s*")((?:\\.|[^"\\])*)(")/g,
+        (match, prefix, latex, suffix) => {
+          const normalizedLatex = latex.replace(/\\+(?=[A-Za-z])/g, (slashes) => {
+            if (slashes.length === 1) {
+              return "\\\\";
+            }
+            if (slashes.length % 2 === 1) {
+              return "\\".repeat(slashes.length - 1);
+            }
+            return slashes;
+          });
+          return prefix + normalizedLatex + suffix;
+        },
+      );
+    }
+
+    btnParse.addEventListener("click", () => {
+      stopPlay();
+      try {
+        const parsed = JSON.parse(normalizeLatexJsonEscapes(editor.value));
+        if (!Array.isArray(parsed) || parsed.length === 0) {
+          alert("Invalid format: Must be a non-empty array of objects with { latex, explanation }");
+          return;
+        }
+        currentSteps = parsed;
+        slider.max = currentSteps.length - 1;
+        goToStep(0, false);
+      } catch (err) {
+        alert("Syntax Error in JSON: " + err.message);
+      }
+    });
+
+    btnPrev.addEventListener("click", () => {
+      stopPlay();
+      goToStep(currentIndex - 1, true);
+    });
+
+    btnNext.addEventListener("click", () => {
+      stopPlay();
+      goToStep(currentIndex + 1, true);
+    });
+
+    btnRestart.addEventListener("click", () => {
+      stopPlay();
+      goToStep(0, true);
+    });
+
+    btnPlay.addEventListener("click", togglePlay);
+
+    slider.addEventListener("input", (e) => {
+      stopPlay();
+      goToStep(parseInt(e.target.value, 10), true);
+    });
+
+    window.addEventListener("keydown", (e) => {
+      if (document.activeElement === editor) return;
+      if (e.key === "ArrowRight") {
+        btnNext.click();
+      } else if (e.key === "ArrowLeft") {
+        btnPrev.click();
+      } else if (e.key === " ") {
+        e.preventDefault();
+        btnPlay.click();
+      }
+    });
+  </script>
+</body>
+</html>
